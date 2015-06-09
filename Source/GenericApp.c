@@ -190,6 +190,8 @@ static void GenericApp_HandleKeys( byte shift, byte keys );
 static void GenericApp_MessageMSGCB( afIncomingMSGPacket_t *pckt );
 static void GenericApp_SendTheMessage( void );
 
+void GenericApp_SendTheControl( uint16 reportPeriod );
+
 #if defined( IAR_ARMCM3_LM )
 static void GenericApp_ProcessRtosMessage( void );
 #endif
@@ -464,6 +466,7 @@ static void GenericApp_ProcessZDOMsgs( zdoIncomingMsg_t *inMsg )
 static void GenericApp_HandleKeys( uint8 shift, uint8 keys )
 {
   zAddrType_t dstAddr;
+  static volatile uint8 defaultTime=FALSE;
 
   // Shift is used to make each button/switch dual purpose.
   if ( shift )
@@ -517,6 +520,13 @@ static void GenericApp_HandleKeys( uint8 shift, uint8 keys )
 
     if ( keys & HAL_KEY_SW_3 )
     {
+      #if defined (ENDDEVICE)
+      if(defaultTime)
+      GenericApp_SendTheControl(5000);
+   else
+     GenericApp_SendTheControl(500);
+      defaultTime ^=1;
+      #endif
     }
 
     if ( keys & HAL_KEY_SW_4 )
@@ -563,6 +573,13 @@ static void GenericApp_MessageMSGCB( afIncomingMSGPacket_t *pkt )
       WPRINTSTR( pkt->cmd.Data );
 #endif
       break;
+      
+#if !defined (COORDINATOR)
+    case GENERICAPP_TIMEOUT_CLUSTER:
+    // update timeout variable for outgoing "CLUSTERID" message
+    SendMsgTimeout = *((uint16 *)(pkt->cmd.Data));
+    break;
+#endif
   }
 }
 
@@ -638,3 +655,36 @@ static void GenericApp_ProcessRtosMessage( void )
 
 /*********************************************************************
  */
+
+#if defined(ENDDEVICE)
+/*********************************************************************
+ * @fn      GenericApp_SendTheControl
+ * @brief   Send a control message.
+ * @param   timeout
+ * @return  none
+ */
+void GenericApp_SendTheControl( uint16 reportPeriod )
+{
+  afAddrType_t addrPlaceholder;
+  addrPlaceholder.addrMode = afAddrNotPresent;
+
+
+  if ( AF_DataRequest( &addrPlaceholder, &GenericApp_ctrlEpDesc,
+                       GENERICAPP_TIMEOUT_CLUSTER,
+                       (byte)sizeof(reportPeriod),
+                       (byte *)&reportPeriod,
+                       &GenericApp_TransID,
+                       AF_DISCV_ROUTE | AF_ACK_REQUEST,
+                       AF_DEFAULT_RADIUS ) == afStatus_SUCCESS )
+  {
+    // Successfully requested to be sent.
+  }
+  else
+  {
+    // Error occurred in request to send.
+  }
+}
+
+/*********************************************************************
+*********************************************************************/
+#endif
